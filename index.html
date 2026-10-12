@@ -120,7 +120,9 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
 .mov .when{color:var(--muted);font-size:.85rem}
 .mov .run{color:var(--muted);font-size:.85rem;text-align:right}
 .mov .note{grid-column:1 / -1;color:var(--muted);font-size:.9rem;font-style:italic}
-.mov .del{grid-column:1 / -1;justify-self:start;background:none;border:0;color:var(--muted);font-size:.82rem;padding:2px 0;text-decoration:underline}
+.mov .ops{grid-column:1 / -1;display:flex;gap:20px}
+.mov .ops button{background:none;border:0;color:var(--muted);font-size:.88rem;padding:6px 0;text-decoration:underline}
+.mov .ops .edit{color:var(--ink);font-weight:600}
 .danger-link{background:none;border:0;color:var(--loan);padding:18px 0 0;font-size:.9rem;text-decoration:underline}
 
 /* Gráfico */
@@ -138,6 +140,35 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
 .chart-sum{margin:8px 0 0;font-size:.92rem}
 .chart-empty{color:var(--muted);font-size:.92rem;margin:0 0 22px;padding:14px;background:var(--soft);border-radius:10px}
 
+/* Informe */
+.rep{color:var(--text)}
+.rep h3{font-family:var(--font-d);font-weight:700;font-size:1.35rem;margin:0 0 2px;line-height:1.2}
+.rep .issued{color:var(--muted);font-size:.9rem;margin:0 0 16px}
+.rep-tot{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px}
+.rep-tot div{background:var(--soft);border-radius:10px;padding:10px}
+.rep-tot span{display:block;font-size:.78rem;color:var(--muted)}
+.rep-tot b{font-family:var(--font-d);font-size:1.02rem}
+.rep-tot .owe b{color:var(--loan)}
+.rep-scroll{overflow-x:auto}
+.rep table{width:100%;border-collapse:collapse;font-size:.88rem}
+.rep th{text-align:left;color:var(--muted);font-weight:600;padding:6px 6px 6px 0;border-bottom:2px solid var(--ink)}
+.rep td{padding:8px 6px 8px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.rep .r{text-align:right;white-space:nowrap}
+.rep td.pay{color:var(--pay)}
+.rep td.loan{color:var(--loan)}
+.rep .n{display:block;color:var(--muted);font-size:.82rem;font-style:italic}
+.rep .foot{color:var(--muted);font-size:.85rem;margin:14px 0 0}
+.rep-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px}
+#printArea{display:none}
+@media print{
+  @page{margin:16mm}
+  body{background:none !important}
+  body > *:not(#printArea){display:none !important}
+  #printArea{display:block !important;color:#000}
+  #printArea .rep{--text:#000;--muted:#555;--ink:#1d2b64;--line:#ccc;--soft:#f1f3f9;--pay:#1f7a4d;--loan:#c0392b}
+  #printArea .rep-tot div{border:1px solid #ccc}
+}
+
 /* Formulario */
 .field{display:block;margin-bottom:14px}
 .field span{display:block;font-size:.9rem;color:var(--muted);margin-bottom:5px;font-weight:500}
@@ -150,6 +181,8 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
 .status{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:8px 14px;border-radius:999px;font-size:.9rem;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
 .status.show{opacity:1}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -178,6 +211,7 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
         <button class="btn pay" type="button" id="dPay">Registrar abono</button>
         <button class="btn loan" type="button" id="dLoan">Prestar más</button>
       </div>
+      <button class="btn ghost wide" type="button" id="dReport" style="margin:-10px 0 22px">Generar informe de pago</button>
       <p class="hist-title">Pagos en el tiempo</p>
       <div id="dChart"></div>
       <p class="hist-title">Historial</p>
@@ -212,6 +246,24 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
     </div>
   </div>
 </dialog>
+
+<!-- Informe de pago -->
+<dialog id="report">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>Informe de pago</h2>
+      <button class="x" type="button" data-close aria-label="Cerrar">×</button>
+    </div>
+    <div class="sheet-body">
+      <div id="rBody"></div>
+      <div class="rep-actions">
+        <button class="btn primary" type="button" id="rPrint">Descargar PDF</button>
+        <button class="btn ghost" type="button" id="rShare">Compartir como texto</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+<div id="printArea"></div>
 
 <script>
 (function(){
@@ -385,9 +437,15 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
       var rr=document.createElement("div"); rr.className="run num"; rr.textContent="Saldo "+money(Math.max(r.run,0));
       d.appendChild(k); d.appendChild(a); d.appendChild(w); d.appendChild(rr);
       if(m.note){ var n=document.createElement("div"); n.className="note"; n.textContent=m.note; d.appendChild(n); }
-      var del=document.createElement("button"); del.type="button"; del.className="del"; del.textContent="Borrar este movimiento";
+      var ops=document.createElement("div"); ops.className="ops";
+      var ed=document.createElement("button"); ed.type="button"; ed.className="edit"; ed.textContent="Editar";
+      ed.addEventListener("click", function(){ openForm(m.type==="abono"?"abono":"prestamo", m); });
+      var del=document.createElement("button"); del.type="button"; del.textContent="Borrar";
       del.addEventListener("click", function(){ deleteMov(m.id); });
-      d.appendChild(del);
+      var pdf=document.createElement("button"); pdf.type="button"; pdf.textContent="Comprobante PDF";
+      pdf.addEventListener("click", function(){ pdfReceipt(people[currentId], m); });
+      ops.appendChild(ed); ops.appendChild(pdf); ops.appendChild(del);
+      d.appendChild(ops);
       h.appendChild(d);
     });
   }
@@ -475,9 +533,197 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
   $("dPay").addEventListener("click", function(){ openForm("abono"); });
   $("dLoan").addEventListener("click", function(){ openForm("prestamo"); });
 
+  // ---------- Informe de pago ----------
+  function el(tag, cls, text){
+    var e=document.createElement(tag); if(cls) e.className=cls;
+    if(text!=null) e.textContent=text; return e;
+  }
+  function totals(p){
+    var ms=sortedMovs(p), lent=0, paid=0;
+    ms.forEach(function(m){ if(m.type==="abono") paid+=m.amount; else lent+=m.amount; });
+    return {ms:ms, lent:lent, paid:paid, bal:Math.max(lent-paid,0)};
+  }
+  function buildReport(p){
+    var t=totals(p);
+    var r=el("div","rep");
+    r.appendChild(el("h3",null,"Estado de cuenta de "+p.name));
+    r.appendChild(el("p","issued","Emitido el "+niceDate(today())));
+    var tot=el("div","rep-tot");
+    [["Total prestado",t.lent,""],["Total abonado",t.paid,""],["Saldo pendiente",t.bal,"owe"]].forEach(function(c){
+      var d=el("div",c[2]); d.appendChild(el("span",null,c[0])); d.appendChild(el("b","num",money(c[1]))); tot.appendChild(d);
+    });
+    r.appendChild(tot);
+    var sc=el("div","rep-scroll"), tb=el("table","num");
+    var hr=el("tr"); ["Fecha","Detalle","Monto","Saldo"].forEach(function(h,i){ hr.appendChild(el("th",i>1?"r":null,h)); });
+    var thead=el("thead"); thead.appendChild(hr); tb.appendChild(thead);
+    var tbody=el("tbody"), run=0;
+    t.ms.forEach(function(m){
+      var isPay=m.type==="abono";
+      run+= isPay ? -m.amount : m.amount;
+      var tr=el("tr");
+      tr.appendChild(el("td",null,niceDate(m.date)));
+      var det=el("td",null,isPay?"Abono":(m.first?"Préstamo inicial":"Préstamo"));
+      if(m.note) det.appendChild(el("span","n",m.note));
+      tr.appendChild(det);
+      tr.appendChild(el("td","r "+(isPay?"pay":"loan"),(isPay?"− ":"+ ")+money(m.amount)));
+      tr.appendChild(el("td","r",money(Math.max(run,0))));
+      tbody.appendChild(tr);
+    });
+    tb.appendChild(tbody); sc.appendChild(tb); r.appendChild(sc);
+    var pays=t.ms.filter(function(m){ return m.type==="abono"; });
+    r.appendChild(el("p","foot", pays.length
+      ? pays.length+(pays.length===1?" abono registrado. Último abono el ":" abonos registrados. Último abono el ")+niceDate(pays[pays.length-1].date)+"."
+      : "Aún no hay abonos registrados."));
+    return r;
+  }
+  function reportText(p){
+    var t=totals(p), run=0;
+    var lines=["Estado de cuenta de "+p.name, "Emitido el "+niceDate(today()), "",
+      "Total prestado: "+money(t.lent), "Total abonado: "+money(t.paid), "Saldo pendiente: "+money(t.bal), "", "Movimientos:"];
+    t.ms.forEach(function(m){
+      var isPay=m.type==="abono"; run+= isPay ? -m.amount : m.amount;
+      lines.push("• "+niceDate(m.date)+" – "+(isPay?"Abono":"Préstamo")+" "+(isPay?"−":"+")+money(m.amount)+
+        (m.note?" ("+m.note+")":"")+" → saldo "+money(Math.max(run,0)));
+    });
+    return lines.join("\n");
+  }
+  $("dReport").addEventListener("click", function(){
+    var p=people[currentId]; if(!p) return;
+    var b=$("rBody"); b.textContent=""; b.appendChild(buildReport(p));
+    $("report").showModal();
+  });
+  $("rPrint").addEventListener("click", function(){
+    var p=people[currentId]; if(p) pdfReport(p);
+  });
+  $("rShare").addEventListener("click", function(){
+    var p=people[currentId]; if(!p) return;
+    var txt=reportText(p);
+    if(navigator.share){
+      navigator.share({title:"Estado de cuenta de "+p.name, text:txt}).catch(function(e){
+        if(e && e.name==="AbortError") return; copyText(txt);
+      });
+    } else { copyText(txt); }
+  });
+  function copyText(txt){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){ flash("Informe copiado. Pégalo en WhatsApp o correo."); },
+        function(){ flash("No se pudo copiar el informe"); });
+    } else { flash("No se pudo copiar el informe"); }
+  }
+
+  // ---------- PDF ----------
+  var dlNs=null;
+  if(window.claude && typeof window.claude.use==="function"){
+    window.claude.use("downloads").then(function(v){ dlNs=v; }).catch(function(){});
+  }
+  function pdfLib(){
+    if(window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+    flash("No se pudo cargar el generador de PDF. Revisa tu conexión."); return null;
+  }
+  function safeName(s){ return String(s).replace(/[\\/:*?"<>|]/g,"").trim() || "persona"; }
+  function openBlob(blob, filename){
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a"); a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); },60000);
+  }
+  function deliverPdf(doc, filename){
+    var blob=doc.output("blob");
+    if(dlNs){
+      dlNs.save({filename:filename, data:blob}).then(function(){ flash("PDF guardado"); }, function(e){
+        if(e && e.code==="declined") return; flash("No se pudo guardar el PDF");
+      });
+      return;
+    }
+    var file=null;
+    try{ file=new File([blob], filename, {type:"application/pdf"}); }catch(e){}
+    if(file && navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file], title:filename}).catch(function(e){
+        if(e && e.name==="AbortError") return; openBlob(blob, filename);
+      });
+      return;
+    }
+    openBlob(blob, filename);
+  }
+  function pdfHeader(doc, title, sub, w){
+    doc.setFillColor(29,43,100); doc.rect(0,0,w,30,"F");
+    doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(17);
+    doc.text(title,15,14);
+    doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.text(sub,15,22);
+    doc.setFontSize(9); doc.setTextColor(210,216,240);
+    doc.text("Emitido el "+niceDate(today()), w-15, 22, {align:"right"});
+  }
+  function pdfReport(p){
+    var J=pdfLib(); if(!J) return;
+    var doc=new J({unit:"mm",format:"a4"}), t=totals(p);
+    pdfHeader(doc,"Estado de cuenta",p.name,210);
+    [["Total prestado",t.lent],["Total abonado",t.paid],["Saldo pendiente",t.bal]].forEach(function(b,i){
+      var x=15+i*61;
+      doc.setFillColor(238,241,251); doc.roundedRect(x,38,57,20,2,2,"F");
+      doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(93,101,136); doc.text(b[0],x+4,45);
+      doc.setFont("helvetica","bold"); doc.setFontSize(13);
+      if(i===2) doc.setTextColor(192,57,43); else doc.setTextColor(26,31,54);
+      doc.text(money(b[1]),x+4,53);
+    });
+    var run=0, body=[], kinds=[];
+    t.ms.forEach(function(m){
+      var isPay=m.type==="abono"; run+= isPay ? -m.amount : m.amount; kinds.push(isPay);
+      body.push([niceDate(m.date), (isPay?"Abono":(m.first?"Préstamo inicial":"Préstamo"))+(m.note?"\n"+m.note:""),
+        (isPay?"- ":"+ ")+money(m.amount), money(Math.max(run,0))]);
+    });
+    doc.autoTable({
+      startY:66, head:[["Fecha","Detalle","Monto","Saldo"]], body:body, theme:"striped",
+      margin:{left:15,right:15},
+      styles:{font:"helvetica",fontSize:10,cellPadding:2.6,textColor:[26,31,54]},
+      headStyles:{fillColor:[29,43,100],textColor:255},
+      alternateRowStyles:{fillColor:[246,247,253]},
+      columnStyles:{0:{cellWidth:32},2:{halign:"right",cellWidth:34},3:{halign:"right",cellWidth:34}},
+      didParseCell:function(d){
+        if(d.section==="body" && d.column.index===2){
+          d.cell.styles.textColor = kinds[d.row.index] ? [31,122,77] : [192,57,43];
+          d.cell.styles.fontStyle="bold";
+        }
+      }
+    });
+    var pays=t.ms.filter(function(m){ return m.type==="abono"; });
+    doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(93,101,136);
+    doc.text(pays.length
+      ? pays.length+(pays.length===1?" abono registrado. Último abono el ":" abonos registrados. Último abono el ")+niceDate(pays[pays.length-1].date)+"."
+      : "Aún no hay abonos registrados.", 15, doc.lastAutoTable.finalY+10);
+    deliverPdf(doc, "Estado de cuenta - "+safeName(p.name)+".pdf");
+  }
+  function pdfReceipt(p, m){
+    if(!p || !m) return;
+    var J=pdfLib(); if(!J) return;
+    var doc=new J({unit:"mm",format:"a5"}), W=148, isPay=m.type==="abono";
+    var run=0, after=0;
+    sortedMovs(p).forEach(function(x){ run+= x.type==="abono" ? -x.amount : x.amount; if(x.id===m.id) after=Math.max(run,0); });
+    pdfHeader(doc, isPay ? "Comprobante de abono" : "Comprobante de préstamo", p.name, W);
+    doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(93,101,136);
+    doc.text(isPay ? "Monto abonado" : "Monto prestado", 15, 44);
+    doc.setFont("helvetica","bold"); doc.setFontSize(28);
+    if(isPay) doc.setTextColor(31,122,77); else doc.setTextColor(192,57,43);
+    doc.text(money(m.amount), 15, 57);
+    var rows=[["Persona",p.name],["Fecha",niceDate(m.date)]];
+    if(m.note) rows.push(["Nota",m.note]);
+    rows.push(["Saldo después de este movimiento",money(after)]);
+    rows.push(["Saldo pendiente a hoy",money(totals(p).bal)]);
+    var y=70;
+    rows.forEach(function(r){
+      doc.setDrawColor(213,219,239); doc.line(15,y-5,W-15,y-5);
+      doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(93,101,136); doc.text(r[0],15,y);
+      doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(26,31,54);
+      var lines=doc.splitTextToSize(String(r[1]), W-30);
+      doc.text(lines,15,y+6);
+      y+=14+(lines.length-1)*5;
+    });
+    deliverPdf(doc, "Comprobante "+(isPay?"abono":"préstamo")+" - "+safeName(p.name)+" - "+m.date+".pdf");
+  }
+
   // ---------- Formulario ----------
   var mode = null; // "nuevo" | "abono" | "prestamo"
-  function openForm(m){
+  var editId = null;
+  function openForm(m, movToEdit){
     if(!store){ flash("Espera un momento, cargando datos…"); return; }
     mode=m;
     var p=people[currentId];
@@ -487,6 +733,15 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
     $("fName").value=""; $("fAmount").value=""; $("fNoteIn").value="";
     $("fDate").value=today(); $("fErr").textContent="";
     $("fSave").textContent = m==="abono" ? "Guardar abono" : "Guardar préstamo";
+    editId = null;
+    if(movToEdit){
+      editId = movToEdit.id;
+      $("fTitle").textContent = (m==="abono" ? "Editar abono de " : "Editar préstamo a ")+p.name;
+      $("fAmount").value = money(movToEdit.amount);
+      $("fDate").value = movToEdit.date;
+      $("fNoteIn").value = movToEdit.note || "";
+      $("fSave").textContent = "Guardar cambios";
+    }
     $("form").showModal();
     setTimeout(function(){ (m==="nuevo" ? $("fName") : $("fAmount")).focus(); },60);
   }
@@ -520,15 +775,20 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
     }
     var cur=people[currentId]; if(!cur){ $("form").close(); return; }
     if(!amount){ err.textContent="Escribe el monto."; $("fAmount").focus(); return; }
-    if(mode==="abono"){
-      var bal=balance(cur);
-      if(amount>bal){ err.textContent="El abono supera el saldo pendiente ("+money(bal)+")."; $("fAmount").focus(); return; }
-    }
     var copy=JSON.parse(JSON.stringify(cur));
-    copy.movs.push({id:uid(),type:mode,amount:amount,date:date,note:note,ts:Date.now()});
+    if(editId){
+      copy.movs.forEach(function(m){ if(m.id===editId){ m.amount=amount; m.date=date; m.note=note; } });
+    } else {
+      copy.movs.push({id:uid(),type:mode,amount:amount,date:date,note:note,ts:Date.now()});
+    }
+    if(balance(copy)<0){
+      err.textContent = editId ? "Con ese cambio los abonos superarían lo prestado."
+                               : "El abono supera el saldo pendiente ("+money(balance(cur))+").";
+      $("fAmount").focus(); return;
+    }
     store.save(copy);
     $("form").close(); fillDetail();
-    flash(mode==="abono" ? "Abono guardado" : "Préstamo guardado");
+    flash(editId ? "Cambios guardados" : mode==="abono" ? "Abono guardado" : "Préstamo guardado");
   }
 
   // ---------- Utilidades UI ----------
