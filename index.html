@@ -70,6 +70,8 @@ header h1{font-family:var(--font-d);font-weight:700;font-size:1.05rem;margin:0;c
 .row .meta{color:var(--muted);font-size:.85rem}
 .row .bal{font-family:var(--font-d);font-weight:700;font-size:1.2rem;color:var(--loan)}
 .row.paid .bal{color:var(--pay)}
+.row .right{text-align:right;flex:none}
+.row .pct{font-size:.8rem;color:var(--muted);margin-top:1px}
 .row.paid .name{color:var(--muted)}
 .empty{padding:40px 8px 0 32px;color:var(--muted)}
 .empty strong{display:block;color:var(--text);font-size:1.1rem;margin-bottom:4px}
@@ -352,6 +354,8 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
   // ---------- Vista principal ----------
   var $ = function(id){ return document.getElementById(id); };
   var loaded = false;
+  var totalLent = 0;
+  var pctFmt = new Intl.NumberFormat("es-CL",{maximumFractionDigits:1});
 
   function render(){
     var list = Object.keys(people).map(function(k){ return people[k]; });
@@ -360,6 +364,9 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
     var paid = list.filter(function(p){ return balance(p)<=0; })
                    .sort(function(a,b){ return a.name.localeCompare(b.name,"es"); });
     var total = owing.reduce(function(s,p){ return s+balance(p); },0);
+    totalLent = list.reduce(function(s,p){
+      return s + (p.movs||[]).reduce(function(a,m){ return a + (m.type==="abono" ? 0 : m.amount); },0);
+    },0);
     $("total").textContent = money(total);
     if(store) loaded = true;
     $("summary").textContent = !loaded ? "Cargando…" :
@@ -394,9 +401,16 @@ dialog::backdrop{background:rgba(10,14,35,.45)}
     var ms=sortedMovs(p); var last=ms[ms.length-1];
     m.textContent = last ? "Último movimiento: "+niceDate(last.date) : "";
     who.appendChild(n); who.appendChild(m);
+    var right=document.createElement("div"); right.className="right";
     var bal=document.createElement("div"); bal.className="bal num";
     bal.textContent = isPaid ? "Pagado" : money(balance(p));
-    b.appendChild(who); b.appendChild(bal);
+    right.appendChild(bal);
+    if(!isPaid && totalLent>0){
+      var pc=document.createElement("div"); pc.className="pct num";
+      pc.textContent = pctFmt.format(balance(p)/totalLent*100)+"% del total prestado";
+      right.appendChild(pc);
+    }
+    b.appendChild(who); b.appendChild(right);
     b.addEventListener("click", function(){ openDetail(p.id); });
     return b;
   }
